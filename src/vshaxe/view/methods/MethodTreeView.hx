@@ -1,5 +1,6 @@
 package vshaxe.view.methods;
 
+import vshaxe.workspace.WorkspaceFolderModel;
 import vshaxe.server.LanguageServer;
 import vshaxe.server.HaxeMethodResult;
 import vshaxe.helper.CopyPaste;
@@ -12,7 +13,8 @@ enum abstract MethodTreeViewType(String) {
 
 class MethodTreeView {
     final context:ExtensionContext;
-    final server:LanguageServer;
+    var server:LanguageServer;
+    final model:WorkspaceFolderModel;
 
     var enabled:Bool;
     var methods:Array<MethodTreeItem> = [];
@@ -21,14 +23,15 @@ class MethodTreeView {
     var treeView:TreeView<MethodTreeItem>;
     var _onDidChangeTreeData = new EventEmitter<MethodTreeItem>();
 
+    var onDidRunHaxeMethodDisposable:Disposable;
+    var onDidChangeRequestQueueDisposable:Disposable;
+
     public var onDidChangeTreeData:Event<MethodTreeItem>;
 
-    public function new(context:ExtensionContext, server:LanguageServer) {
+    public function new(context:ExtensionContext, model:WorkspaceFolderModel) {
         this.context = context;
-        this.server = server;
+        this.model = model;
 
-        server.onDidRunHaxeMethod(onDidRunHaxeMethod);
-        server.onDidChangeRequestQueue(onDidChangeRequestQueue);
         workspace.onDidChangeConfiguration(_ -> update());
         onDidChangeTreeData = _onDidChangeTreeData.event;
         setMethodsViewType(Timers);
@@ -41,6 +44,24 @@ class MethodTreeView {
         context.registerHaxeCommand(Methods_CollapseAll, collapseAll);
         context.registerHaxeCommand(Methods_Copy, copy);
         context.registerHaxeCommand(Methods_Track, track);
+
+        context.subscriptions.push(window.onDidChangeActiveTextEditor(updateWorkspaceFolder));
+    }
+
+    function updateWorkspaceFolder(editor:TextEditor) {
+        if(editor == null) return;
+        var config = model.getConfigForFilePath(editor.document.uri);
+        if(config == null) return;
+        server = config.server;
+
+        if(onDidRunHaxeMethodDisposable != null) onDidRunHaxeMethodDisposable.dispose();
+        if(onDidChangeRequestQueueDisposable != null) onDidChangeRequestQueueDisposable.dispose();
+
+        onDidRunHaxeMethodDisposable = server.onDidRunHaxeMethod(onDidRunHaxeMethod);
+        onDidChangeRequestQueueDisposable = server.onDidChangeRequestQueue(onDidChangeRequestQueue);
+
+        context.subscriptions.push(onDidRunHaxeMethodDisposable);
+        context.subscriptions.push(onDidChangeRequestQueueDisposable);
     }
 
     function setMethodsViewType(viewType:MethodTreeViewType) {

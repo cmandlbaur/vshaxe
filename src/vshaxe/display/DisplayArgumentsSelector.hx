@@ -1,13 +1,18 @@
 package vshaxe.display;
 
+import vshaxe.workspace.WorkspaceFolderModel;
+
 class DisplayArgumentsSelector {
     static var statusBarWarningThemeColor = new ThemeColor("errorForeground");
 
+    final model:WorkspaceFolderModel;
+
     var displayArguments:DisplayArguments;
     var statusBarItem:StatusBarItem;
+    var onDidChangeCurrentProviderDisposable:Disposable;
 
-    public function new(context:ExtensionContext, displayArguments:DisplayArguments) {
-        this.displayArguments = displayArguments;
+    public function new(context:ExtensionContext, model:WorkspaceFolderModel) {
+        this.model = model;
 
         statusBarItem = window.createStatusBarItem(Left, 11);
         statusBarItem.tooltip = "Select Haxe Completion Provider";
@@ -16,8 +21,18 @@ class DisplayArgumentsSelector {
 
         context.registerHaxeCommand(SelectDisplayArgumentsProvider, selectProvider);
 
+        context.subscriptions.push(window.onDidChangeActiveTextEditor(updateWorkspaceFolder));
+    }
+
+    function updateWorkspaceFolder(editor:TextEditor) {
+        if(editor == null) return;
+        var workspaceFolderConfig = model.getConfigForFilePath(editor.document.uri);
+        trace(editor.document.uri);
+        if(workspaceFolderConfig == null) return;
+
+        displayArguments = workspaceFolderConfig.displayArguments;
+        if(onDidChangeCurrentProviderDisposable != null) onDidChangeCurrentProviderDisposable.dispose();
         displayArguments.onDidChangeCurrentProvider(_ -> updateStatusBarItem());
-        updateStatusBarItem();
     }
 
     function selectProvider() {

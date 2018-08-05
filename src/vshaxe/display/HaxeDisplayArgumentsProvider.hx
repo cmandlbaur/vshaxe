@@ -1,12 +1,16 @@
 package vshaxe.display;
 
+import vshaxe.workspace.WorkspaceFolderConfig;
+import vshaxe.workspace.WorkspaceFolderModel;
 import haxe.extern.EitherType;
 
 class HaxeDisplayArgumentsProvider {
     final context:ExtensionContext;
-    final displayArguments:DisplayArguments;
-    final hxmlDiscovery:HxmlDiscovery;
+    var displayArguments:DisplayArguments;
+    final model:WorkspaceFolderModel;
+    final folder:WorkspaceFolder;
     final statusBarItem:StatusBarItem;
+    final hxmlDiscoveryInstances:Array<HxmlDiscovery>;
 
     var provideArguments:Array<String>->Void;
     var providerDisposable:Disposable;
@@ -20,10 +24,11 @@ class HaxeDisplayArgumentsProvider {
 
     public final description = "Project using haxe.displayConfigurations or HXML files (built-in)";
 
-    public function new(context:ExtensionContext, displayArguments:DisplayArguments, hxmlDiscovery:HxmlDiscovery) {
+    public function new(context:ExtensionContext, model:WorkspaceFolderModel, folder:WorkspaceFolder) {
+        this.model = model;
+        this.folder = folder;
         this.context = context;
-        this.displayArguments = displayArguments;
-        this.hxmlDiscovery = hxmlDiscovery;
+        hxmlDiscoveryInstances = [];
 
         statusBarItem = window.createStatusBarItem(Left, 10);
         statusBarItem.tooltip = "Select Haxe Configuration";
@@ -33,9 +38,16 @@ class HaxeDisplayArgumentsProvider {
         context.registerHaxeCommand(SelectDisplayConfiguration, selectConfiguration);
 
         context.subscriptions.push(workspace.onDidChangeConfiguration(_ -> refresh()));
-        hxmlDiscovery.onDidChangeFiles(_ -> refresh());
+    }
 
+    public function updateWorkspaceFolderConfig(workspaceFolderConfig:WorkspaceFolderConfig) {
+        displayArguments = workspaceFolderConfig.displayArguments;
         refresh();
+    }
+
+    public function observeHXMLFiles(hxmlDiscovery:HxmlDiscovery) {
+        hxmlDiscovery.onDidChangeFiles(_ -> refresh());
+        hxmlDiscoveryInstances.push(hxmlDiscovery);
     }
 
     function updateConfigurations() {
@@ -57,10 +69,12 @@ class HaxeDisplayArgumentsProvider {
             configurations.push({kind: Configured(i, label), args: args});
         }
 
-        for (hxmlFile in hxmlDiscovery.files) {
-            var hxmlConfig = [hxmlFile];
-            if (!configs.exists(config -> config.equals(hxmlConfig))) {
-                configurations.push({kind: Discovered(hxmlFile), args: hxmlConfig});
+        for(hxmlDiscovery in hxmlDiscoveryInstances) {
+            for (hxmlFile in hxmlDiscovery.files) {
+                var hxmlConfig = [hxmlFile];
+                if (!configs.exists(config -> config.equals(hxmlConfig))) {
+                    configurations.push({kind: Discovered(hxmlFile), args: hxmlConfig});
+                }
             }
         }
     }
@@ -171,6 +185,7 @@ class HaxeDisplayArgumentsProvider {
     function updateDisplayArgumentsProviderRegistration() {
         var isActive = configurations.length > 0;
         if (isActive && providerDisposable == null) {
+            if(displayArguments == null) return;
             providerDisposable = displayArguments.registerProvider("Haxe", this);
         } else if (!isActive && providerDisposable != null) {
             providerDisposable.dispose();

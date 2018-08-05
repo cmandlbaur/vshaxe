@@ -1,5 +1,6 @@
 package vshaxe.view.dependencies;
 
+import vshaxe.workspace.WorkspaceFolderModel;
 import haxe.io.Path;
 import vshaxe.view.dependencies.DependencyResolver;
 import vshaxe.view.dependencies.Node;
@@ -10,10 +11,14 @@ import vshaxe.helper.PathHelper;
 
 class DependencyTreeView {
     final context:ExtensionContext;
-    final haxeExecutable:HaxeExecutable;
+    final model:WorkspaceFolderModel;
     final view:TreeView<Node>;
 
-    var displayArguments:Array<String>;
+    var displayArguments:DisplayArguments;
+    var haxeExecutable:HaxeExecutable;
+    var displayArgumentsChanged:Disposable;
+    var haxeExecutableConfigurationChanged:Disposable;
+
     var relevantHxmls:Array<String> = [];
     var dependencyNodes:Array<Node> = [];
     var dependencies:DependencyList;
@@ -25,10 +30,9 @@ class DependencyTreeView {
 
     public var onDidChangeTreeData:Event<Node>;
 
-    public function new(context:ExtensionContext, displayArguments:DisplayArguments, haxeExecutable:HaxeExecutable) {
+    public function new(context:ExtensionContext, model:WorkspaceFolderModel) {
         this.context = context;
-        this.displayArguments = displayArguments.arguments;
-        this.haxeExecutable = haxeExecutable;
+        this.model = model;
 
         onDidChangeTreeData = _onDidChangeTreeData.event;
         window.registerTreeDataProvider("haxe.dependencies", this);
@@ -51,13 +55,39 @@ class DependencyTreeView {
         context.subscriptions.push(hxmlFileWatcher.onDidDelete(onDidChangeHxml));
         context.subscriptions.push(hxmlFileWatcher);
 
-        context.subscriptions.push(haxeExecutable.onDidChangeConfiguration(_ -> refresh()));
         context.subscriptions.push(workspace.onDidChangeConfiguration(_ -> updateAutoReveal()));
-        context.subscriptions.push(displayArguments.onDidChangeArguments(onDidChangeDisplayArguments));
+        context.subscriptions.push(window.onDidChangeActiveTextEditor(updateWorkspaceFolder));
         context.subscriptions.push(window.onDidChangeActiveTextEditor(_ -> autoReveal()));
         context.subscriptions.push(view.onDidChangeVisibility(_ -> autoReveal()));
 
         updateAutoReveal();
+    }
+
+    function updateWorkspaceFolder(editor:TextEditor) {
+        if(editor == null) return;
+        if(editor.document == null) return;
+        var workspaceFolderConfig = model.getConfigForFilePath(editor.document.uri);
+        if(workspaceFolderConfig == null) return;
+
+        displayArguments = workspaceFolderConfig.displayArguments;
+        haxeExecutable = workspaceFolderConfig.haxeExecutable;
+
+        listenForDisplayArgumentsChanged();
+        listenForHaxeExecutableChanged();
+    }
+
+    function listenForDisplayArgumentsChanged() {
+        if(displayArgumentsChanged != null) displayArgumentsChanged.dispose();
+        displayArgumentsChanged = displayArguments.onDidChangeArguments(onDidChangeDisplayArguments);
+
+        context.subscriptions.push(displayArgumentsChanged);
+    }
+
+    function listenForHaxeExecutableChanged() {
+        if(haxeExecutableConfigurationChanged != null) haxeExecutableConfigurationChanged.dispose();
+
+        haxeExecutableConfigurationChanged = haxeExecutable.onDidChangeConfiguration(_ -> refresh());
+        context.subscriptions.push(haxeExecutableConfigurationChanged);
     }
 
     function onDidChangeHxml(uri:Uri) {
@@ -69,7 +99,8 @@ class DependencyTreeView {
     }
 
     function refreshDependencies():Array<Node> {
-        var newDependencies = DependencyExtractor.extractDependencies(displayArguments, workspace.workspaceFolders[0].uri.fsPath);
+        if(displayArguments == null) return null;
+        var newDependencies = DependencyExtractor.extractDependencies(displayArguments.arguments, workspace.workspaceFolders[0].uri.fsPath);
         relevantHxmls = newDependencies.hxmls;
 
         // avoid FS access / creating processes unless there were _actually_ changes
@@ -131,7 +162,7 @@ class DependencyTreeView {
         return new Node(label, info.path, type);
     }
 
-    function onDidChangeDisplayArguments(displayArguments:Array<String>) {
+    function onDidChangeDisplayArguments(displayArguments:DisplayArguments) {
         this.displayArguments = displayArguments;
         refresh();
     }
@@ -176,9 +207,13 @@ class DependencyTreeView {
 
     public function getChildren(?node:Node):Array<Node> {
         if (refreshNeeded) {
-            dependencyNodes = refreshDependencies();
+            var refreshedDependencies = refreshDependencies();
+            if(refreshedDependencies == null) return [];
+
+            dependencyNodes = refreshedDependencies;
             refreshNeeded = false;
         }
+
         return if (node == null) dependencyNodes else node.children;
     }
 

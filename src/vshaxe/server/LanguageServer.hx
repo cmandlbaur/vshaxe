@@ -17,6 +17,7 @@ class LanguageServer {
     final serverModulePath:String;
     final hxFileWatcher:FileSystemWatcher;
     final disposables:Array<{ function dispose():Void; }>;
+    final name:String;
 
     var restartDisposables:Array<{ function dispose():Void; }>;
     var progresses = new Map<Int,Void->Void>();
@@ -30,6 +31,7 @@ class LanguageServer {
     inline function get_onDidChangeRequestQueue() return _onDidChangeRequestQueue.event;
 
     public function new(folder:WorkspaceFolder, context:ExtensionContext, haxeExecutable:HaxeExecutable, displayArguments:DisplayArguments, api:Vshaxe) {
+        this.name = folder.name;
         this.folder = folder;
         this.displayArguments = displayArguments;
         this.haxeExecutable = haxeExecutable;
@@ -60,8 +62,18 @@ class LanguageServer {
     }
 
     function onDidChangeActiveTextEditor(editor:TextEditor) {
-        if (editor != null && editor.document.languageId == "haxe")
-            client.sendNotification("haxe/didChangeActiveTextEditor", {uri: editor.document.uri.toString()});
+        if (editor == null) return;
+        if (editor.document.languageId != "haxe") return;
+
+        if (workspace.getWorkspaceFolder(editor.document.uri) == folder) {
+            var payload = {uri: editor.document.uri.toString()};
+            if(client == null) {
+                start();
+                haxe.Timer.delay(() -> client.sendNotification("haxe/didChangeActiveTextEditor", payload), 5000);
+            } else {
+                client.sendNotification("haxe/didChangeActiveTextEditor", payload);
+            }
+        }
     }
 
     public function start() {
@@ -95,7 +107,7 @@ class LanguageServer {
             }
         };
 
-        client = new LanguageClient("haxe", "Haxe", serverOptions, clientOptions);
+        client = new LanguageClient(name, 'Haxe ($name)', serverOptions, clientOptions);
 
         // If arguments change while we're starting language server we remember that fact
         // and send updated arguments once language server is ready. this can often happen on startup
@@ -163,6 +175,7 @@ class LanguageServer {
             arguments: arguments,
             print: print
         };
+        trace(displayServerConfig);
         var oldSerialized = displayServerConfigSerialized;
         displayServerConfigSerialized = haxe.Json.stringify(displayServerConfig);
         return displayServerConfigSerialized != oldSerialized;

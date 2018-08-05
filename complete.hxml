@@ -1,0 +1,7 @@
+-cp src
+-cp src-api
+-cp vscode-extern/src
+-cp server/src
+-cp server/protocol/src
+-js xxx.js
+-lib hxnodejs

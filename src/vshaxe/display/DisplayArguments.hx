@@ -9,11 +9,11 @@ class DisplayArguments {
     public var onDidChangeCurrentProvider(get,never):Event<Null<String>>;
 
     public var arguments(default,null):Array<String>;
-    public var onDidChangeArguments(get,never):Event<Array<String>>;
+    public var onDidChangeArguments(get,never):Event<DisplayArguments>;
 
     final folder:WorkspaceFolder;
     final mementos:WorkspaceMementos;
-    final _onDidChangeArguments = new EventEmitter<Array<String>>();
+    final _onDidChangeArguments = new EventEmitter<DisplayArguments>();
     final _onDidChangeCurrentProvider = new EventEmitter<Null<String>>();
 
     inline function get_onDidChangeCurrentProvider() return _onDidChangeCurrentProvider.event;
@@ -81,7 +81,7 @@ class DisplayArguments {
     function provideArguments(newArguments:Array<String>) {
         if (!newArguments.equals(arguments)) {
             arguments = newArguments;
-            _onDidChangeArguments.fire(newArguments);
+            _onDidChangeArguments.fire(this);
         }
     }
 }

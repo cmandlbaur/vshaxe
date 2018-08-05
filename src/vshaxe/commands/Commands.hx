@@ -1,28 +1,38 @@
 package vshaxe.commands;
 
+import vshaxe.workspace.WorkspaceFolderModel;
 import vshaxe.display.HaxeDisplayArgumentsProvider;
 import vshaxe.server.LanguageServer;
 
 class Commands {
     final context:ExtensionContext;
-    final server:LanguageServer;
-    final haxeDisplayArgumentsProvider:HaxeDisplayArgumentsProvider;
+    final model:WorkspaceFolderModel;
+    var server:LanguageServer;
 
-    public function new(context:ExtensionContext, server:LanguageServer, haxeDisplayArgumentsProvider:HaxeDisplayArgumentsProvider) {
+    public function new(context:ExtensionContext, model:WorkspaceFolderModel) {
+        this.model = model;
         this.context = context;
-        this.server = server;
-        this.haxeDisplayArgumentsProvider = haxeDisplayArgumentsProvider;
 
-        context.registerHaxeCommand(RestartLanguageServer, server.restart);
+        context.registerHaxeCommand(RestartLanguageServer, () -> server.restart());
+        context.registerHaxeCommand(RunGlobalDiagnostics, () -> server.runGlobalDiagnostics());
         context.registerHaxeCommand(ShowReferences, showReferences);
-        context.registerHaxeCommand(RunGlobalDiagnostics, server.runGlobalDiagnostics);
         context.registerHaxeCommand(ToggleCodeLens, toggleCodeLens);
         context.registerHaxeCommand(DebugSelectedConfiguration, debugSelectedConfiguration);
 
         #if debug
         context.registerHaxeCommand(ClearMementos, clearMementos);
-        context.registerHaxeCommand(RunMethod, server.runMethod);
+        context.registerHaxeCommand(RunMethod, (method, params) -> server.runMethod(method, params));
         #end
+
+        context.subscriptions.push(window.onDidChangeActiveTextEditor(updateWorkspaceFolder));
+    }
+
+    function updateWorkspaceFolder(editor:TextEditor) {
+        if(editor == null) return;
+        var workspaceFolderConfig = model.getConfigForFilePath(editor.document.uri);
+        if(workspaceFolderConfig == null) return;
+
+        server = workspaceFolderConfig.server;
     }
 
     function showReferences(uri:String, position:Position, locations:Array<Location>) {
@@ -45,6 +55,7 @@ class Commands {
     }
 
     function debugSelectedConfiguration() {
+        var haxeDisplayArgumentsProvider = model.getConfigForFilePath(window.activeTextEditor.document.uri).haxeDisplayArgumentsProvider;
         if (!haxeDisplayArgumentsProvider.isActive) {
             window.showErrorMessage("The built-in completion provider is not active, so there is no configuration to be debugged.");
             return;

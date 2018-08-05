@@ -12,5 +12,8 @@
         "neverAskTemplate": true
     },
     // something with json2object in tokentree-formatter...
-    "haxe.enableCompilationServer": false
+    "haxe.enableCompilationServer": false,
+    "haxe.displayConfigurations": [
+        "complete.hxml"
+    ]
 }

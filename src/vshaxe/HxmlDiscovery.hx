@@ -13,7 +13,7 @@ class HxmlDiscovery {
 
     inline function get_onDidChangeFiles() return didChangeFilesEmitter.event;
 
-    public function new(folder, mementos) {
+    public function new(folder:WorkspaceFolder, mementos:WorkspaceMementos) {
         this.folder = folder;
         this.mementos = mementos;
 
